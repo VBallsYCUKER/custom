@@ -1,0 +1,168 @@
+--// Services
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+local char = player.Character or player.CharacterAdded:Wait()
+local humanoid = char:WaitForChild("Humanoid")
+local head = char:WaitForChild("Head")
+local hrp = char:WaitForChild("HumanoidRootPart")
+
+-- Equip skill
+local args = { "Kaiokeni" }
+ReplicatedStorage.Package.Events.equipskill:InvokeServer(unpack(args))
+
+-- Animation
+local beastAnim = ReplicatedStorage.Package.FormAnims.Beast.Animation
+local animator = humanoid:WaitForChild("Animator")
+local track = animator:LoadAnimation(beastAnim)
+track:Play()
+local animLength = track.Length
+
+-- Camera setup
+local cam = workspace.CurrentCamera
+local oldType = cam.CameraType
+cam.CameraType = Enum.CameraType.Scriptable
+local camOffset = CFrame.new(0,0,-3) -- initial offset
+
+-- GUI for white fade (full screen mobile safe)
+local fadeGui = Instance.new("ScreenGui")
+fadeGui.ResetOnSpawn = false
+fadeGui.IgnoreGuiInset = true
+fadeGui.Parent = player:WaitForChild("PlayerGui")
+
+local fadeFrame = Instance.new("Frame")
+fadeFrame.Size = UDim2.fromScale(1,1)
+fadeFrame.Position = UDim2.fromScale(0,0)
+fadeFrame.AnchorPoint = Vector2.new(0,0)
+fadeFrame.BackgroundColor3 = Color3.new(1,1,1)
+fadeFrame.BackgroundTransparency = 1
+fadeFrame.BorderSizePixel = 0
+fadeFrame.Parent = fadeGui
+
+-- Clone True Mui effects
+local trueMuiClones = {}
+local function cloneTrueMuiEffects()
+    local trueMuiPath = ReplicatedStorage:FindFirstChild("Package")
+        and ReplicatedStorage.Package:FindFirstChild("FormAnims")
+        and ReplicatedStorage.Package.FormAnims:FindFirstChild("True Mui")
+        and ReplicatedStorage.Package.FormAnims["True Mui"]:FindFirstChild("TrueMUITrans")
+    if trueMuiPath then
+        local effectNames = {["FloorDust"]=true, ["RedSpark"]=true, ["SCREAM?"]=true}
+        for _, descendant in ipairs(trueMuiPath:GetChildren()) do
+            if effectNames[descendant.Name] then
+                for _, child in ipairs(descendant:GetChildren()) do
+                    local clone = child:Clone()
+                    clone.Parent = hrp
+                    table.insert(trueMuiClones, clone)
+                end
+            end
+        end
+    end
+end
+
+-- Clone True Mui effects immediately for camera focus
+cloneTrueMuiEffects()
+
+-- IdleAura removal during animation (IdleAura to IdleAura9)
+local auraConn
+auraConn = RunService.Heartbeat:Connect(function()
+    if not track.IsPlaying then
+        auraConn:Disconnect()
+        return
+    end
+    for _, v in ipairs(hrp:GetDescendants()) do
+        if v.Name:match("^IdleAura[1-9]?$") then
+            v:Destroy()
+        end
+    end
+end)
+
+-- Track animation for Hehehe, zoom/fade
+local animStart = tick()
+local heheheTriggered = false
+local zoomTriggered = false
+
+local camConn
+camConn = RunService.RenderStepped:Connect(function(dt)
+    if not track.IsPlaying then
+        camConn:Disconnect()
+        return
+    end
+
+    local elapsed = tick() - animStart
+
+    -- Fire Hehehe mid-animation (0.6s)
+    if not heheheTriggered and elapsed >= 0.6 then
+        heheheTriggered = true
+        ReplicatedStorage.Package.Events.Hehehe:InvokeServer()
+    end
+
+    -- Trigger zoom/fade 0.3s before animation ends
+    if not zoomTriggered and elapsed >= animLength - 0.3 then
+        zoomTriggered = true
+        local zoomDuration = 0.3
+        local zoomTime = 0
+        local startOffset = camOffset
+        local endOffset = CFrame.new(0,0,-6)
+        local fadeStart = 1
+        local fadeEnd = 0
+
+        local zoomConn
+        zoomConn = RunService.RenderStepped:Connect(function(dt2)
+            zoomTime = zoomTime + dt2
+            local alpha = math.clamp(zoomTime/zoomDuration,0,1)
+            camOffset = startOffset:Lerp(endOffset, alpha)
+            fadeFrame.BackgroundTransparency = fadeStart * (1-alpha)
+            if alpha >= 1 then zoomConn:Disconnect() end
+        end)
+    end
+
+    -- Update camera to follow head and face front of player
+    local headPos = head.Position
+    local hrpFront = hrp.Position + hrp.CFrame.LookVector
+    cam.CFrame = CFrame.lookAt(
+        headPos + (hrpFront - hrp.Position).Unit * -camOffset.Z + Vector3.new(0, camOffset.Y, 0),
+        headPos
+    )
+end)
+
+-- At animation end: clone effects onto player
+track.Stopped:Connect(function()
+    cam.CameraType = oldType
+
+    -- True Mui clones are removed
+    for _, obj in ipairs(trueMuiClones) do
+        if obj and obj.Parent then obj:Destroy() end
+    end
+    fadeFrame:Destroy()
+
+    -- Clone Broccoli Lightning (stays permanently)
+    local broccoliHRP = workspace:FindFirstChild("Living")
+        and workspace.Living:FindFirstChild("Broccoli")
+        and workspace.Living.Broccoli:FindFirstChild("HumanoidRootPart")
+    local broccoliLightning = broccoliHRP and broccoliHRP:FindFirstChild("Lightning")
+    if broccoliLightning then
+        local clone = broccoliLightning:Clone()
+        for _, desc in ipairs(clone:GetDescendants()) do
+            if desc:IsA("ParticleEmitter") then
+                desc.Rate = 1
+            end
+        end
+        clone.Parent = hrp
+    end
+
+    -- Clone Wukong IdleAura + IdleAura2 (stays permanently)
+    local wukongHRP = workspace:FindFirstChild("Living")
+        and workspace.Living:FindFirstChild("SSJB Wukong")
+        and workspace.Living["SSJB Wukong"]:FindFirstChild("HumanoidRootPart")
+    if wukongHRP then
+        for _, auraName in ipairs({"IdleAura","IdleAura2"}) do
+            local aura = wukongHRP:FindFirstChild(auraName)
+            if aura then
+                local clone = aura:Clone()
+                clone.Parent = hrp
+            end
+        end
+    end
+end)
