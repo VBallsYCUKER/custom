@@ -131,13 +131,13 @@ end)
 track.Stopped:Connect(function()
     cam.CameraType = oldType
 
-    -- True Mui clones are removed
+    -- Cleanup True Mui clones
     for _, obj in ipairs(trueMuiClones) do
         if obj and obj.Parent then obj:Destroy() end
     end
     fadeFrame:Destroy()
 
-    -- Clone Broccoli Lightning (stays permanently)
+    -- Clone Broccoli Lightning (permanent)
     local broccoliHRP = workspace:FindFirstChild("Living")
         and workspace.Living:FindFirstChild("Broccoli")
         and workspace.Living.Broccoli:FindFirstChild("HumanoidRootPart")
@@ -152,7 +152,7 @@ track.Stopped:Connect(function()
         clone.Parent = hrp
     end
 
-    -- Clone Wukong IdleAura + IdleAura2 (stays permanently)
+    -- Clone Wukong IdleAura + IdleAura2 (permanent)
     local wukongHRP = workspace:FindFirstChild("Living")
         and workspace.Living:FindFirstChild("SSJB Wukong")
         and workspace.Living["SSJB Wukong"]:FindFirstChild("HumanoidRootPart")
@@ -163,6 +163,30 @@ track.Stopped:Connect(function()
                 local clone = aura:Clone()
                 clone.Parent = hrp
             end
+        end
+    end
+
+    -- Change Charge colors
+    for i = 1,6 do
+        local charge = hrp:FindFirstChild("Charge"..i)
+        if charge and charge:IsA("ParticleEmitter") then
+            if i <= 3 then
+                charge.Color = ColorSequence.new(Color3.fromRGB(255,0,0)) -- red
+            else
+                charge.Color = ColorSequence.new(Color3.fromRGB(0,0,0)) -- black
+            end
+        end
+    end
+
+    -- Change all IdleAura colors to Red - Black - Red
+    for i = 1,9 do
+        local aura = hrp:FindFirstChild("IdleAura"..i)
+        if aura and aura:IsA("ParticleEmitter") then
+            aura.Color = ColorSequence.new{
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(255,0,0)),  -- start red
+                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0,0,0)),  -- middle black
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(255,0,0))    -- end red
+            }
         end
     end
 end)
