@@ -64,7 +64,7 @@ end
 -- Clone True Mui effects immediately for camera focus
 cloneTrueMuiEffects()
 
--- IdleAura removal during animation (IdleAura to IdleAura9)
+-- IdleAura removal during animation
 local auraConn
 auraConn = RunService.Heartbeat:Connect(function()
     if not track.IsPlaying then
@@ -106,7 +106,6 @@ camConn = RunService.RenderStepped:Connect(function(dt)
         local startOffset = camOffset
         local endOffset = CFrame.new(0,0,-6)
         local fadeStart = 1
-        local fadeEnd = 0
 
         local zoomConn
         zoomConn = RunService.RenderStepped:Connect(function(dt2)
@@ -166,27 +165,33 @@ track.Stopped:Connect(function()
         end
     end
 
-    -- Change Charge colors
+    -- Change Charge colors (Charge1 - Charge6)
     for i = 1,6 do
         local charge = hrp:FindFirstChild("Charge"..i)
-        if charge and charge:IsA("ParticleEmitter") then
-            if i <= 3 then
-                charge.Color = ColorSequence.new(Color3.fromRGB(255,0,0)) -- red
-            else
-                charge.Color = ColorSequence.new(Color3.fromRGB(0,0,0)) -- black
+        if charge then
+            for _, desc in ipairs(charge:GetDescendants()) do
+                if desc:IsA("ParticleEmitter") then
+                    if i <= 3 then
+                        desc.Color = ColorSequence.new(Color3.fromRGB(255,0,0)) -- red
+                    else
+                        desc.Color = ColorSequence.new(Color3.fromRGB(0,0,0)) -- black
+                    end
+                end
             end
         end
     end
 
-    -- Change all IdleAura colors to Red - Black - Red
-    for i = 1,9 do
-        local aura = hrp:FindFirstChild("IdleAura"..i)
-        if aura and aura:IsA("ParticleEmitter") then
-            aura.Color = ColorSequence.new{
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(255,0,0)),  -- start red
-                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0,0,0)),  -- middle black
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(255,0,0))    -- end red
-            }
+    -- Change IdleAura color pattern to Red - Black - Red
+    local idle = hrp:FindFirstChild("IdleAura")
+    if idle then
+        for _, desc in ipairs(idle:GetDescendants()) do
+            if desc:IsA("ParticleEmitter") then
+                desc.Color = ColorSequence.new{
+                    ColorSequenceKeypoint.new(0, Color3.fromRGB(255,0,0)), -- red
+                    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0,0,0)), -- black
+                    ColorSequenceKeypoint.new(1, Color3.fromRGB(255,0,0))  -- red
+                }
+            end
         end
     end
 end)
