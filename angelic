@@ -1,167 +1,365 @@
---// Services
+-- FULL CORRECTED LOCALSCRIPT
+-- Place in StarterPlayerScripts (LocalScript)
+
+-- Services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local task = task
+
 local player = Players.LocalPlayer
 local char = player.Character or player.CharacterAdded:Wait()
 local humanoid = char:WaitForChild("Humanoid")
 local head = char:WaitForChild("Head")
 local hrp = char:WaitForChild("HumanoidRootPart")
-
--- Equip skill
-local args = { "Kaiokeni" }
-ReplicatedStorage.Package.Events.equipskill:InvokeServer(unpack(args))
-
--- Animation
-local beastAnim = ReplicatedStorage.Package.FormAnims.Beast.Animation
-local animator = humanoid:WaitForChild("Animator")
-local track = animator:LoadAnimation(beastAnim)
-track:Play()
-local animLength = track.Length
-
--- Camera setup
+local playerGui = player:WaitForChild("PlayerGui")
 local cam = workspace.CurrentCamera
-local oldType = cam.CameraType
-cam.CameraType = Enum.CameraType.Scriptable
-local camOffset = CFrame.new(0,0,-3) -- initial offset
 
--- GUI for white fade (full screen mobile safe)
+-- SETTINGS / ASSET IDS
+local EQUIP_SKILL_NAME = "Kaiokeni"
+local BEAST_ANIM = ReplicatedStorage:WaitForChild("Package"):WaitForChild("FormAnims"):WaitForChild("Beast"):WaitForChild("Animation")
+local TRUE_MUI_TRANS = (ReplicatedStorage:FindFirstChild("Package") and ReplicatedStorage.Package:FindFirstChild("FormAnims") and ReplicatedStorage.Package.FormAnims:FindFirstChild("True Mui") and ReplicatedStorage.Package.FormAnims["True Mui"]:FindFirstChild("TrueMUITrans"))
+local WUKONG_HRP = workspace:FindFirstChild("Living") and workspace.Living:FindFirstChild("SSJB Wukong") and workspace.Living["SSJB Wukong"]:FindFirstChild("HumanoidRootPart")
+local BROCCOLI_HRP = workspace:FindFirstChild("Living") and workspace.Living:FindFirstChild("Broccoli") and workspace.Living.Broccoli:FindFirstChild("HumanoidRootPart")
+
+local PARTICLE_A_TEXTURE = "rbxassetid://13712004842"
+local PARTICLE_B_TEXTURE = "rbxassetid://7083340510"
+local PARTICLE_A_SIZE = 10
+local PARTICLE_B_SIZE = 3
+local PARTICLE_A_COLOR = {16, 40, 255}
+local PARTICLE_B_COLOR = {11, 178, 255}
+local PARTICLE_BRIGHTNESS = 1
+local PARTICLE_LE = 1
+
+-- Camera offsets
+local CAM_START = CFrame.new(0, 0, -10)
+local CAM_END   = CFrame.new(0, 0, -18)
+
+-- Utility: force-red for various objects
+local function forceRedOnInstance(inst)
+    if not inst then return end
+    if inst:IsA("BasePart") then
+        -- set BrickColor/Color; Color is best for MeshParts and Parts
+        pcall(function() inst.Color = Color3.fromRGB(255, 0, 0) end)
+    elseif inst:IsA("Decal") or inst:IsA("Texture") then
+        -- Decal/Texture have no direct Color property in all cases; set Translucency/replace image if necessary
+        pcall(function() if inst:IsA("Decal") then inst.Color3 = Color3.fromRGB(255,0,0) end end)
+    elseif inst:IsA("SpecialMesh") then
+        pcall(function() inst.VertexColor = Vector3.new(1,0,0) end)
+    elseif inst:IsA("MeshPart") then
+        pcall(function() inst.Color = Color3.fromRGB(255,0,0) end)
+    end
+end
+
+-- Utility: recolor all ParticleEmitters under an instance to crimson (with LE/Brightness)
+local function recolorAllEmittersToCrimson(root)
+    if not root then return end
+    for _, d in ipairs(root:GetDescendants()) do
+        if d:IsA("ParticleEmitter") then
+            pcall(function()
+                d.Color = ColorSequence.new(Color3.fromRGB(220, 20, 60))
+                d.LightEmission = 1
+                d.Brightness = 1
+            end)
+        end
+    end
+end
+
+-- Utility: recolor all ParticleEmitters under an instance to red (for charges)
+local function recolorAllEmittersToRed(root)
+    if not root then return end
+    for _, d in ipairs(root:GetDescendants()) do
+        if d:IsA("ParticleEmitter") then
+            pcall(function()
+                d.Color = ColorSequence.new(Color3.fromRGB(255, 0, 0))
+                d.LightEmission = 1
+                d.Brightness = 1
+            end)
+        end
+    end
+end
+
+-- Create player particle emitter helper (returns emitter)
+local function makePlayerParticle(parent, texture, size, color)
+    local p = Instance.new("ParticleEmitter")
+    p.Name = "CustomParticle"
+    p.Texture = texture
+    p.Size = NumberSequence.new(size)
+    p.Color = ColorSequence.new(Color3.fromRGB(color[1], color[2], color[3]))
+    p.Brightness = PARTICLE_BRIGHTNESS
+    p.LightEmission = PARTICLE_LE
+    p.Squash = NumberSequence.new(2)
+    p.Lifetime = NumberRange.new(0.3)
+    p.Rate = 3000
+    p.Rotation = NumberRange.new(-180, 180)
+    p.RotSpeed = NumberRange.new(20)
+    p.Speed = NumberRange.new(10)
+    p.SpreadAngle = Vector2.new(360, -360)
+    p.LockedToPart = true
+    p.Enabled = false
+    p.Parent = parent
+    return p
+end
+
+-- Create the two custom particles attached to player's HRP (disabled initially)
+local particleA = makePlayerParticle(hrp, PARTICLE_A_TEXTURE, PARTICLE_A_SIZE, PARTICLE_A_COLOR)
+local particleB = makePlayerParticle(hrp, PARTICLE_B_TEXTURE, PARTICLE_B_SIZE, PARTICLE_B_COLOR)
+
+-- Attempt to recolor player's Hair (under Workspace > Living > <playerName> > Hair*)
+task.spawn(function()
+    local living = workspace:FindFirstChild("Living")
+    if not living then return end
+
+    -- First try direct model with player's name
+    local model = living:FindFirstChild(player.Name)
+    if model then
+        for _, child in ipairs(model:GetDescendants()) do
+            if string.match(string.lower(child.Name), "hair") then
+                -- If Accessory/Handle or MeshPart, color it
+                if child:IsA("Accessory") then
+                    local handle = child:FindFirstChild("Handle")
+                    if handle then forceRedOnInstance(handle) end
+                else
+                    forceRedOnInstance(child)
+                end
+            end
+        end
+        return
+    end
+
+    -- If direct model not found, search for any "Hair" under living whose ancestor is related to player.Name
+    for _, candidate in ipairs(living:GetDescendants()) do
+        if string.match(string.lower(candidate.Name), "hair") then
+            -- check ancestors to see if parent model name contains player's name (tolerant check)
+            local anc = candidate.Parent
+            local matched = false
+            while anc and anc ~= living do
+                if string.match(string.lower(anc.Name), string.lower(player.Name)) then
+                    matched = true
+                    break
+                end
+                anc = anc.Parent
+            end
+            if matched then
+                for _, d in ipairs(candidate:GetDescendants()) do
+                    forceRedOnInstance(d)
+                end
+                forceRedOnInstance(candidate)
+            end
+        end
+    end
+end)
+
+-- Recolor Head Brows and Eyes to red
+task.spawn(function()
+    for _, c in ipairs(head:GetDescendants()) do
+        local n = string.lower(c.Name)
+        if n == "brows" or n == "eyes" or n:find("brow") or n:find("eye") then
+            -- recolor the descendant and its children
+            forceRedOnInstance(c)
+            for _, d in ipairs(c:GetDescendants()) do
+                forceRedOnInstance(d)
+            end
+        end
+    end
+end)
+
+-- Equip skill (safe call)
+pcall(function()
+    ReplicatedStorage.Package.Events.equipskill:InvokeServer("Kaiokeni")
+end)
+
+-- Load and play animation
+local animator = humanoid:WaitForChild("Animator")
+local track = animator:LoadAnimation(BEAST_ANIM)
+track:Play()
+local animLength = track.Length or 2 -- fallback if nil
+
+-- Fire Kaioken (Hehehe) exactly halfway through the animation
+task.delay(animLength / 2, function()
+	if track.IsPlaying then
+		pcall(function()
+			game:GetService("ReplicatedStorage")
+				:WaitForChild("Package")
+				:WaitForChild("Events")
+				:WaitForChild("Hehehe")
+				:InvokeServer()
+		end)
+	end
+end)
+
+
+-- Enable custom particles while anim plays
+particleA.Enabled = true
+particleB.Enabled = true
+
+-- Camera + fade GUI setup
+local oldCamType = cam.CameraType
+cam.CameraType = Enum.CameraType.Scriptable
+local camOffset = CAM_START
+
 local fadeGui = Instance.new("ScreenGui")
 fadeGui.ResetOnSpawn = false
 fadeGui.IgnoreGuiInset = true
-fadeGui.Parent = player:WaitForChild("PlayerGui")
+fadeGui.Parent = playerGui
 
 local fadeFrame = Instance.new("Frame")
-fadeFrame.Size = UDim2.fromScale(1,1)
-fadeFrame.Position = UDim2.fromScale(0,0)
-fadeFrame.AnchorPoint = Vector2.new(0,0)
-fadeFrame.BackgroundColor3 = Color3.new(1,1,1)
-fadeFrame.BackgroundTransparency = 1
+fadeFrame.Size = UDim2.fromScale(1, 1)
+fadeFrame.Position = UDim2.fromScale(0, 0)
+fadeFrame.AnchorPoint = Vector2.new(0, 0)
 fadeFrame.BorderSizePixel = 0
+fadeFrame.BackgroundColor3 = Color3.new(1, 1, 1)
+fadeFrame.BackgroundTransparency = 1
 fadeFrame.Parent = fadeGui
 
--- Clone True Mui effects
+-- Clone selected True Mui effects for camera focus (clean up later)
 local trueMuiClones = {}
-local function cloneTrueMuiEffects()
-    local trueMuiPath = ReplicatedStorage:FindFirstChild("Package")
-        and ReplicatedStorage.Package:FindFirstChild("FormAnims")
-        and ReplicatedStorage.Package.FormAnims:FindFirstChild("True Mui")
-        and ReplicatedStorage.Package.FormAnims["True Mui"]:FindFirstChild("TrueMUITrans")
-    if trueMuiPath then
-        local effectNames = {["FloorDust"]=true, ["RedSpark"]=true, ["SCREAM?"]=true}
-        for _, descendant in ipairs(trueMuiPath:GetChildren()) do
-            if effectNames[descendant.Name] then
-                for _, child in ipairs(descendant:GetChildren()) do
-                    local clone = child:Clone()
-                    clone.Parent = hrp
-                    table.insert(trueMuiClones, clone)
-                end
+if TRUE_MUI_TRANS then
+    for _, child in ipairs(TRUE_MUI_TRANS:GetChildren()) do
+        if child.Name == "FloorDust" or child.Name == "RedSpark" or child.Name == "SCREAM?" then
+            for _, g in ipairs(child:GetChildren()) do
+                local c = g:Clone()
+                c.Parent = hrp
+                table.insert(trueMuiClones, c)
             end
         end
     end
 end
 
--- Clone True Mui effects immediately for camera focus
-cloneTrueMuiEffects()
+-- Heartbeat: remove temporary IdleAura variants during animation and recolor live Charges on HRP to red
+local startTime = tick()
+local heheheTriggered = false
+local zoomTriggered = false
 
--- IdleAura removal during animation (IdleAura to IdleAura9)
 local auraConn
 auraConn = RunService.Heartbeat:Connect(function()
     if not track.IsPlaying then
         auraConn:Disconnect()
         return
     end
+
+    -- remove temporary IdleAura / IdleAura1..9 under hrp
     for _, v in ipairs(hrp:GetDescendants()) do
         if v.Name:match("^IdleAura[1-9]?$") then
-            v:Destroy()
+            pcall(function() v:Destroy() end)
         end
     end
-end)
 
--- Track animation for Hehehe, zoom/fade
-local animStart = tick()
-local heheheTriggered = false
-local zoomTriggered = false
-
-local camConn
-camConn = RunService.RenderStepped:Connect(function(dt)
-    if not track.IsPlaying then
-        camConn:Disconnect()
-        return
-    end
-
-    local elapsed = tick() - animStart
-
-    -- Fire Hehehe mid-animation (0.6s)
-    if not heheheTriggered and elapsed >= 0.6 then
-        heheheTriggered = true
-        ReplicatedStorage.Package.Events.Hehehe:InvokeServer()
-    end
-
-    -- Trigger zoom/fade 0.3s before animation ends
-    if not zoomTriggered and elapsed >= animLength - 0.3 then
-        zoomTriggered = true
-        local zoomDuration = 0.3
-        local zoomTime = 0
-        local startOffset = camOffset
-        local endOffset = CFrame.new(0,0,-6)
-        local fadeStart = 1
-        local fadeEnd = 0
-
-        local zoomConn
-        zoomConn = RunService.RenderStepped:Connect(function(dt2)
-            zoomTime = zoomTime + dt2
-            local alpha = math.clamp(zoomTime/zoomDuration,0,1)
-            camOffset = startOffset:Lerp(endOffset, alpha)
-            fadeFrame.BackgroundTransparency = fadeStart * (1-alpha)
-            if alpha >= 1 then zoomConn:Disconnect() end
-        end)
-    end
-
-    -- Update camera to follow head and face front of player
-    local headPos = head.Position
-    local hrpFront = hrp.Position + hrp.CFrame.LookVector
-    cam.CFrame = CFrame.lookAt(
-        headPos + (hrpFront - hrp.Position).Unit * -camOffset.Z + Vector3.new(0, camOffset.Y, 0),
-        headPos
-    )
-end)
-
--- At animation end: clone effects onto player
-track.Stopped:Connect(function()
-    cam.CameraType = oldType
-
-    -- True Mui clones are removed
-    for _, obj in ipairs(trueMuiClones) do
-        if obj and obj.Parent then obj:Destroy() end
-    end
-    fadeFrame:Destroy()
-
-    -- Clone Broccoli Lightning (stays permanently)
-    local broccoliHRP = workspace:FindFirstChild("Living")
-        and workspace.Living:FindFirstChild("Broccoli")
-        and workspace.Living.Broccoli:FindFirstChild("HumanoidRootPart")
-    local broccoliLightning = broccoliHRP and broccoliHRP:FindFirstChild("Lightning")
-    if broccoliLightning then
-        local clone = broccoliLightning:Clone()
-        for _, desc in ipairs(clone:GetDescendants()) do
-            if desc:IsA("ParticleEmitter") then
-                desc.Rate = 1
+    -- if any Charge emitters / folders exist on HRP during anim, recolor them red
+    for _, v in ipairs(hrp:GetDescendants()) do
+        if v:IsA("ParticleEmitter") and v.Name:match("^Charge[1-6]$") then
+            pcall(function()
+                v.Color = ColorSequence.new(Color3.fromRGB(255, 0, 0))
+                v.LightEmission = 1
+                v.Brightness = 1
+            end)
+        elseif (v:IsA("Model") or v:IsA("Folder") or v:IsA("Attachment")) and v.Name:match("^Charge[1-6]$") then
+            for _, desc in ipairs(v:GetDescendants()) do
+                if desc:IsA("ParticleEmitter") then
+                    pcall(function()
+                        desc.Color = ColorSequence.new(Color3.fromRGB(255, 0, 0))
+                        desc.LightEmission = 1
+                        desc.Brightness = 1
+                    end)
+                end
             end
         end
-        clone.Parent = hrp
+    end
+end)
+----------------------------------------------------
+-- ORBIT CAMERA (30° angle, spins around head)
+----------------------------------------------------
+
+local orbitAngle = 0                 -- current rotation angle
+local orbitSpeed = 1.2               -- rotation speed (radians per second)
+local orbitDistance = 10             -- how far the camera stays (same as your -10)
+local orbitHeight = 0                -- vertical offset from head (0 = at head height)
+local tiltAngle = math.rad(30)       -- 30 degree tilt downward
+
+local camConn = RunService.RenderStepped:Connect(function(dt)
+    if not track.IsPlaying then camConn:Disconnect() return end
+
+    orbitAngle += orbitSpeed * dt
+
+    -- camera orbit position math
+    local headPos = head.Position
+    local x = math.cos(orbitAngle) * orbitDistance
+    local z = math.sin(orbitAngle) * orbitDistance
+
+    local camPos = headPos 
+        + Vector3.new(x, orbitHeight, z) 
+        + Vector3.new(0, math.tan(tiltAngle) * orbitDistance, 0)
+
+    cam.CFrame = CFrame.lookAt(camPos, headPos)
+end)
+
+-- Animation stopped: cleanup + cloning + recolors
+track.Stopped:Connect(function()
+    -- restore camera
+    cam.CameraType = oldCamType
+
+    -- cleanup True Mui clones
+    for _, obj in ipairs(trueMuiClones) do
+        pcall(function() if obj and obj.Parent then obj:Destroy() end end)
     end
 
-    -- Clone Wukong IdleAura + IdleAura2 (stays permanently)
-    local wukongHRP = workspace:FindFirstChild("Living")
-        and workspace.Living:FindFirstChild("SSJB Wukong")
-        and workspace.Living["SSJB Wukong"]:FindFirstChild("HumanoidRootPart")
-    if wukongHRP then
-        for _, auraName in ipairs({"IdleAura","IdleAura2"}) do
-            local aura = wukongHRP:FindFirstChild(auraName)
-            if aura then
-                local clone = aura:Clone()
+    -- remove fade GUI
+    pcall(function() if fadeGui and fadeGui.Parent then fadeGui:Destroy() end end)
+
+    -- disable & destroy custom particles
+    pcall(function() if particleA then particleA.Enabled = false; particleA:Destroy() end end)
+    pcall(function() if particleB then particleB.Enabled = false; particleB:Destroy() end end)
+
+    -- Clone Broccoli Lightning (if exists) and reduce particle rates so it's not crazy
+    if BROCCOLI_HRP then
+        local broccoliLightning = BROCCOLI_HRP:FindFirstChild("Lightning")
+        if broccoliLightning then
+            local clone = broccoliLightning:Clone()
+            for _, desc in ipairs(clone:GetDescendants()) do
+                if desc:IsA("ParticleEmitter") then
+                    pcall(function() desc.Rate = 1 end)
+                end
+            end
+            clone.Parent = hrp
+        end
+    end
+
+    -- Clone Charge1..6 from SSJB Wukong and recolor them RED (force)
+    if WUKONG_HRP then
+        for i = 1, 6 do
+            local chargeObj = WUKONG_HRP:FindFirstChild("Charge" .. i)
+            if chargeObj then
+                local clone = chargeObj:Clone()
                 clone.Parent = hrp
+                -- recolor all emitters within clone to RED
+                recolorAllEmittersToRed(clone)
+            end
+        end
+    end
+
+    -- Clone IdleAura + IdleAura2 from Wukong and recolor ALL particle emitters crimson
+    if WUKONG_HRP then
+        for _, name in ipairs({"IdleAura", "IdleAura2"}) do
+            local auraSrc = WUKONG_HRP:FindFirstChild(name)
+            if auraSrc then
+                local clonedAura = auraSrc:Clone()
+                clonedAura.Parent = hrp
+                -- IMPORTANT: recolor every ParticleEmitter descendant (attachments may contain them)
+                recolorAllEmittersToCrimson(clonedAura)
+            end
+        end
+    end
+
+    -- As a final safety pass: recolor any remaining IdleAura descendants on HRP to crimson (in case naming differs)
+    for _, v in ipairs(hrp:GetDescendants()) do
+        if v:IsA("ParticleEmitter") then
+            local pname = v.Name and string.lower(v.Name) or ""
+            if pname:find("idleaura") or pname:find("idle") then
+                pcall(function()
+                    v.Color = ColorSequence.new(Color3.fromRGB(220, 20, 60))
+                    v.LightEmission = 1
+                    v.Brightness = 1
+                end)
             end
         end
     end
