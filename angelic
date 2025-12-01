@@ -64,7 +64,7 @@ end
 -- Clone True Mui effects immediately for camera focus
 cloneTrueMuiEffects()
 
--- IdleAura removal during animation
+-- IdleAura removal during animation (IdleAura to IdleAura9)
 local auraConn
 auraConn = RunService.Heartbeat:Connect(function()
     if not track.IsPlaying then
@@ -106,6 +106,7 @@ camConn = RunService.RenderStepped:Connect(function(dt)
         local startOffset = camOffset
         local endOffset = CFrame.new(0,0,-6)
         local fadeStart = 1
+        local fadeEnd = 0
 
         local zoomConn
         zoomConn = RunService.RenderStepped:Connect(function(dt2)
@@ -130,13 +131,13 @@ end)
 track.Stopped:Connect(function()
     cam.CameraType = oldType
 
-    -- Cleanup True Mui clones
+    -- True Mui clones are removed
     for _, obj in ipairs(trueMuiClones) do
         if obj and obj.Parent then obj:Destroy() end
     end
     fadeFrame:Destroy()
 
-    -- Clone Broccoli Lightning (permanent)
+    -- Clone Broccoli Lightning (stays permanently)
     local broccoliHRP = workspace:FindFirstChild("Living")
         and workspace.Living:FindFirstChild("Broccoli")
         and workspace.Living.Broccoli:FindFirstChild("HumanoidRootPart")
@@ -151,7 +152,7 @@ track.Stopped:Connect(function()
         clone.Parent = hrp
     end
 
-    -- Clone Wukong IdleAura + IdleAura2 (permanent)
+    -- Clone Wukong IdleAura + IdleAura2 (stays permanently)
     local wukongHRP = workspace:FindFirstChild("Living")
         and workspace.Living:FindFirstChild("SSJB Wukong")
         and workspace.Living["SSJB Wukong"]:FindFirstChild("HumanoidRootPart")
@@ -161,36 +162,6 @@ track.Stopped:Connect(function()
             if aura then
                 local clone = aura:Clone()
                 clone.Parent = hrp
-            end
-        end
-    end
-
-    -- Change Charge colors (Charge1 - Charge6)
-    for i = 1,6 do
-        local charge = hrp:FindFirstChild("Charge"..i)
-        if charge then
-            for _, desc in ipairs(charge:GetDescendants()) do
-                if desc:IsA("ParticleEmitter") then
-                    if i <= 3 then
-                        desc.Color = ColorSequence.new(Color3.fromRGB(255,0,0)) -- red
-                    else
-                        desc.Color = ColorSequence.new(Color3.fromRGB(0,0,0)) -- black
-                    end
-                end
-            end
-        end
-    end
-
-    -- Change IdleAura color pattern to Red - Black - Red
-    local idle = hrp:FindFirstChild("IdleAura")
-    if idle then
-        for _, desc in ipairs(idle:GetDescendants()) do
-            if desc:IsA("ParticleEmitter") then
-                desc.Color = ColorSequence.new{
-                    ColorSequenceKeypoint.new(0, Color3.fromRGB(255,0,0)), -- red
-                    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0,0,0)), -- black
-                    ColorSequenceKeypoint.new(1, Color3.fromRGB(255,0,0))  -- red
-                }
             end
         end
     end
